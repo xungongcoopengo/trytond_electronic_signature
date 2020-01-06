@@ -176,7 +176,9 @@ class Signature(Workflow, ModelSQL, ModelView):
     @classmethod
     def signer_structure(cls, conf, signer):
         return {
+            'first_name': signer.first_name,
             'last_name': signer.full_name,
+            'birth_date': signer.birth_date,
             'email': signer.email,
             # Should be mobile but strangely we used phone
             'mobile': signer.mobile or signer.phone,
@@ -202,6 +204,40 @@ class Signature(Workflow, ModelSQL, ModelView):
             else:
                 new_struct[key] = value
         return new_struct
+
+    @classmethod
+    def get_standalone_data_structure(cls, conf, signer, id_docs, id_type):
+        data = {}
+        signer_struct = cls.transcode_structure(conf, 'signer_structure',
+                signer)
+        signer_struct['idDocuments'] = {
+            'documents': id_docs,
+            'type': id_type,
+            }
+        signer_struct['certificateType'] = 'certified'
+        data['signer'] = signer_struct
+        return data
+
+    @classmethod
+    def get_validation_request(cls, signer, id_docs, id_type):
+        data = {}
+        personal_info = {}
+        id_document = {}
+        personal_info['firstname'] = signer.first_name
+        personal_info['lastname'] = signer.full_name
+        personal_info['birthDate'] = signer.birth_date
+
+        if id_type == 'id_card_fr':
+            id_document['type'] = 0
+        elif id_type == 'passport_eu':
+            id_document['type'] = 1
+        else:
+            id_document['type'] = 2
+        id_document['photos'] = id_docs
+
+        data['idDocument'] = id_document
+        data['personalInfo'] = personal_info
+        return data
 
     @classmethod
     def get_data_structure(cls, conf, report):
@@ -280,6 +316,45 @@ class Signature(Workflow, ModelSQL, ModelView):
             response)
         signature.attachment = attachment
         signature.save()
+
+    def validate_electronic_identity(self, signer, id_docs, id_type):
+        #import pdb; pdb.set_trace()
+        conf = self.__class__.get_conf(credential=self.provider_credential)
+        data = self.__class__.get_standalone_data_structure(conf, signer,
+            id_docs, id_type)
+        method = 'validate_electronic_identity'
+        response = self.__class__.call_provider(self, conf, method, data)
+        import pprint
+        pp = pprint.PrettyPrinter(indent=2)
+        pp.pprint(response)
+
+        id_transaction = getattr(self.__class__, conf['provider'] +
+            '_validate_electronic_identity')(response)
+
+        method = 'check_status'
+        response = self.__class__.call_provider(self, conf, method,
+            id_transaction)
+        status = getattr(self.__class__, conf['provider'] +
+            '_get_transaction_info_from_response')(response)
+        pp.pprint(status)
+
+        method = 'validate_id'
+        data_validate = self.__class__.get_validation_request(signer, id_docs, id_type)
+        response_validate_id = self.__class__.call_provider(self, conf, method, data_validate)
+        pp.pprint(response_validate_id)
+
+        return getattr(self.__class__, conf['provider'] +
+            '_validate_electronic_identity')(response)
+
+    def validate_electronic_identity1(self, signer, id_docs, id_type):
+        conf = self.__class__.get_conf(credential=self.provider_credential)
+
+        import pprint
+        pp = pprint.PrettyPrinter(indent=2)
+        method = 'validate_id'
+        data_validate = self.__class__.get_validation_request(signer, id_docs, id_type)
+        response_validate_id = self.__class__.call_provider(self, conf, method, data_validate)
+        pp.pprint(response_validate_id)
 
     def notify_signature_completed(self):
         # TODO Trigger an event
