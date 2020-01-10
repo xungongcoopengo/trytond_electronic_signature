@@ -237,6 +237,17 @@ class Signature(Workflow, ModelSQL, ModelView):
 
         data['idDocument'] = id_document
         data['personalInfo'] = personal_info
+        data['allowManual'] = False
+        return data
+
+    @classmethod
+    def get_match_filter(cls, signer):
+        data = {}
+        data['firstname'] = signer.first_name
+        data['lastname'] = signer.full_name
+        data['email'] = signer.email
+        data['mobile'] = signer.mobile or signer.phone
+        print(data['email'], " != ", data['mobile'])
         return data
 
     @classmethod
@@ -317,8 +328,7 @@ class Signature(Workflow, ModelSQL, ModelView):
         signature.attachment = attachment
         signature.save()
 
-    def validate_electronic_identity(self, signer, id_docs, id_type):
-        #import pdb; pdb.set_trace()
+    """def validate_electronic_identity1(self, signer, id_docs, id_type):
         conf = self.__class__.get_conf(credential=self.provider_credential)
         data = self.__class__.get_standalone_data_structure(conf, signer,
             id_docs, id_type)
@@ -338,23 +348,28 @@ class Signature(Workflow, ModelSQL, ModelView):
             '_get_transaction_info_from_response')(response)
         pp.pprint(status)
 
+        return getattr(self.__class__, conf['provider'] +
+            '_validate_electronic_identity')(response)"""
+
+    def validate_electronic_identity(self, signer, id_docs, id_type):
+        conf = self.__class__.get_conf(credential=self.provider_credential)
         method = 'validate_id'
         data_validate = self.__class__.get_validation_request(signer, id_docs, id_type)
         response_validate_id = self.__class__.call_provider(self, conf, method, data_validate)
-        pp.pprint(response_validate_id)
-
+        # import pprint
+        # pp = pprint.PrettyPrinter(indent=2)
+        # pp.pprint(response_validate_id)
         return getattr(self.__class__, conf['provider'] +
-            '_validate_electronic_identity')(response)
+            '_get_status_from_response')(response_validate_id)
 
-    def validate_electronic_identity1(self, signer, id_docs, id_type):
-        conf = self.__class__.get_conf(credential=self.provider_credential)
-
+    def check_match_account(self, signer):
         import pprint
         pp = pprint.PrettyPrinter(indent=2)
-        method = 'validate_id'
-        data_validate = self.__class__.get_validation_request(signer, id_docs, id_type)
-        response_validate_id = self.__class__.call_provider(self, conf, method, data_validate)
-        pp.pprint(response_validate_id)
+        conf = self.__class__.get_conf(credential=self.provider_credential)
+        method = 'check_match_account'
+        data = self.__class__.get_match_filter(signer)
+        response_match_account = self.__class__.call_provider(self, conf, method, data)
+        pp.pprint(response_match_account)
 
     def notify_signature_completed(self):
         # TODO Trigger an event
