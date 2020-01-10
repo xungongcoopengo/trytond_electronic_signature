@@ -351,24 +351,26 @@ class Signature(Workflow, ModelSQL, ModelView):
         return getattr(self.__class__, conf['provider'] +
             '_validate_electronic_identity')(response)"""
 
-    def validate_electronic_identity(self, signer, id_docs, id_type):
-        conf = self.__class__.get_conf(credential=self.provider_credential)
+    @classmethod
+    def validate_electronic_identity(cls, provider_credential, signer, id_docs, id_type):
+        conf = cls.get_conf(credential=provider_credential)
         method = 'validate_id'
-        data_validate = self.__class__.get_validation_request(signer, id_docs, id_type)
-        response_validate_id = self.__class__.call_provider(self, conf, method, data_validate)
+        data_validate = cls.get_validation_request(signer, id_docs, id_type)
+        response_validate_id = cls.call_provider(cls(), conf, method, data_validate)
         # import pprint
         # pp = pprint.PrettyPrinter(indent=2)
         # pp.pprint(response_validate_id)
-        return getattr(self.__class__, conf['provider'] +
+        return getattr(cls, conf['provider'] +
             '_get_status_from_response')(response_validate_id)
 
-    def check_match_account(self, signer):
+    @classmethod
+    def check_match_account(cls, provider_credential, signer):
         import pprint
         pp = pprint.PrettyPrinter(indent=2)
-        conf = self.__class__.get_conf(credential=self.provider_credential)
+        conf = cls.get_conf(credential=provider_credential)
         method = 'check_match_account'
-        data = self.__class__.get_match_filter(signer)
-        response_match_account = self.__class__.call_provider(self, conf, method, data)
+        data = cls.get_match_filter(signer)
+        response_match_account = cls.call_provider(cls(), conf, method, data)
         pp.pprint(response_match_account)
 
     def notify_signature_completed(self):
