@@ -161,7 +161,9 @@ class Signature(Workflow, ModelSQL, ModelView):
     def call_provider(cls, signature, conf, method, data):
         url = conf['url']
         assert url
+        # provider_method, suffix_url = cls.get_methods(conf)[method]
         provider_method = cls.get_methods(conf)[method]
+        # url += suffix_url
         all_data = xmlrpc.client.dumps((data,), provider_method)
         req = requests.post(url, headers=cls.headers(conf['provider']),
             auth=cls.auth(conf), data=all_data)
@@ -219,7 +221,7 @@ class Signature(Workflow, ModelSQL, ModelView):
         return data
 
     @classmethod
-    def get_validation_request(cls, signer, id_docs, id_type):
+    def get_validation_request(cls, signer, id_attachments, id_type):
         data = {}
         personal_info = {}
         id_document = {}
@@ -233,7 +235,7 @@ class Signature(Workflow, ModelSQL, ModelView):
             id_document['type'] = 1
         else:
             id_document['type'] = 2
-        id_document['photos'] = id_docs
+        id_document['photos'] = [id_attachment.data for id_attachment in id_attachments]
 
         data['idDocument'] = id_document
         data['personalInfo'] = personal_info
@@ -247,7 +249,6 @@ class Signature(Workflow, ModelSQL, ModelView):
         data['lastname'] = signer.full_name
         data['email'] = signer.email
         data['mobile'] = signer.mobile or signer.phone
-        print(data['email'], " != ", data['mobile'])
         return data
 
     @classmethod
@@ -352,14 +353,15 @@ class Signature(Workflow, ModelSQL, ModelView):
             '_validate_electronic_identity')(response)"""
 
     @classmethod
-    def validate_electronic_identity(cls, provider_credential, signer, id_docs, id_type):
+    def validate_electronic_identity(cls, provider_credential, signer, id_attachments, id_type):
         conf = cls.get_conf(credential=provider_credential)
         method = 'validate_id'
-        data_validate = cls.get_validation_request(signer, id_docs, id_type)
+        conf['url'] = 'https://sign.test.cryptolog.com/ra/rpc/'
+        data_validate = cls.get_validation_request(signer, id_attachments, id_type)
         response_validate_id = cls.call_provider(cls(), conf, method, data_validate)
-        # import pprint
-        # pp = pprint.PrettyPrinter(indent=2)
-        # pp.pprint(response_validate_id)
+        import pprint
+        pp = pprint.PrettyPrinter(indent=2)
+        pp.pprint(response_validate_id)
         return getattr(cls, conf['provider'] +
             '_get_status_from_response')(response_validate_id)
 
