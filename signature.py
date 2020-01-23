@@ -161,9 +161,9 @@ class Signature(Workflow, ModelSQL, ModelView):
     def call_provider(cls, signature, conf, method, data):
         url = conf['url']
         assert url
-        # provider_method, suffix_url = cls.get_methods(conf)[method]
-        provider_method = cls.get_methods(conf)[method]
-        # url += suffix_url
+        provider_method, suffix_url = cls.get_methods(conf)[method]
+        # provider_method = cls.get_methods(conf)[method]
+        url += suffix_url
         all_data = xmlrpc.client.dumps((data,), provider_method)
         req = requests.post(url, headers=cls.headers(conf['provider']),
             auth=cls.auth(conf), data=all_data)
@@ -356,7 +356,6 @@ class Signature(Workflow, ModelSQL, ModelView):
     def validate_electronic_identity(cls, provider_credential, signer, id_attachments, id_type):
         conf = cls.get_conf(credential=provider_credential)
         method = 'validate_id'
-        conf['url'] = 'https://sign.test.cryptolog.com/ra/rpc/'
         data_validate = cls.get_validation_request(signer, id_attachments, id_type)
         response_validate_id = cls.call_provider(cls(), conf, method, data_validate)
         import pprint
