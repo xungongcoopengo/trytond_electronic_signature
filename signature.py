@@ -169,17 +169,23 @@ class Signature(Workflow, ModelSQL, ModelView):
             auth=cls.auth(conf), data=all_data)
         if req.status_code > 299:
             raise Exception(req.content)
-        response, _ = xmlrpc.client.loads(req.content)
-        if conf['log']:
-            signature.append_log(conf, method, data, response)
-            signature.save()
-        return response
+        try:
+            response, _ = xmlrpc.client.loads(req.content)
+            if conf['log']:
+                signature.append_log(conf, method, data, response)
+                signature.save()
+            return response
+        except xmlrpc.client.Fault as err:
+            print("A fault occurred")
+            print("Fault code: %d" % err.faultCode)
+            print("Fault string: %s" % err.faultString)
+            return False
 
     @classmethod
     def signer_structure(cls, conf, signer):
         return {
             'first_name': signer.first_name,
-            'last_name': signer.full_name,
+            'last_name': signer.name,
             'birth_date': signer.birth_date,
             'email': signer.email,
             # Should be mobile but strangely we used phone
@@ -221,12 +227,12 @@ class Signature(Workflow, ModelSQL, ModelView):
         return data
 
     @classmethod
-    def get_validation_request(cls, signer, id_attachments, id_type):
+    def get_validation_request(cls, signer, identity_attachments, id_type):
         data = {}
         personal_info = {}
         id_document = {}
         personal_info['firstname'] = signer.first_name
-        personal_info['lastname'] = signer.full_name
+        personal_info['lastname'] = signer.name
         personal_info['birthDate'] = signer.birth_date
 
         if id_type == 'id_card_fr':
@@ -235,7 +241,7 @@ class Signature(Workflow, ModelSQL, ModelView):
             id_document['type'] = 1
         else:
             id_document['type'] = 2
-        id_document['photos'] = [id_attachment.data for id_attachment in id_attachments]
+        id_document['photos'] = [id_attachment.data for id_attachment in identity_attachments]
 
         data['idDocument'] = id_document
         data['personalInfo'] = personal_info
@@ -246,7 +252,7 @@ class Signature(Workflow, ModelSQL, ModelView):
     def get_match_filter(cls, signer):
         data = {}
         data['firstname'] = signer.first_name
-        data['lastname'] = signer.full_name
+        data['lastname'] = signer.name
         data['email'] = signer.email
         data['mobile'] = signer.mobile or signer.phone
         return data
@@ -324,6 +330,8 @@ class Signature(Workflow, ModelSQL, ModelView):
         data = cls.get_data_structure(conf, report)
         method = 'init_signature'
         response = cls.call_provider(signature, conf, method, data)
+        if not response:
+            return
         signature.provider_id = cls.get_provider_id_from_response(conf,
             response)
         signature.attachment = attachment
@@ -353,16 +361,21 @@ class Signature(Workflow, ModelSQL, ModelView):
             '_validate_electronic_identity')(response)"""
 
     @classmethod
-    def validate_electronic_identity(cls, provider_credential, signer, id_attachments, id_type):
+    def validate_electronic_identity(cls, provider_credential, signer,
+        identity_attachments, id_type):
         conf = cls.get_conf(credential=provider_credential)
         method = 'validate_id'
-        data_validate = cls.get_validation_request(signer, id_attachments, id_type)
-        response_validate_id = cls.call_provider(cls(), conf, method, data_validate)
-        import pprint
-        pp = pprint.PrettyPrinter(indent=2)
-        pp.pprint(response_validate_id)
-        return getattr(cls, conf['provider'] +
+        data_validate = cls.get_validation_request(signer,
+            identity_attachments, id_type)
+        response_validate_id = cls.call_provider(cls(), conf, method,
+            data_validate)
+        if not response_validate_id:
+            return False
+        response_validate_status = getattr(cls, conf['provider'] +
             '_get_status_from_response')(response_validate_id)
+        validate_result_status = getattr(cls, conf['provider'] +
+            '_validation_result_code_status')()[str(response_validate_status)]
+        return validate_result_status == 'valid'
 
     @classmethod
     def check_match_account(cls, provider_credential, signer):
